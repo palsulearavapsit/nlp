@@ -1,68 +1,48 @@
-import subprocess
-import sys
-import time
+"""Launch The Review Room.
+
+    python run.py            # serve on http://127.0.0.1:8000 and open a browser
+    python run.py --port 9000 --no-browser
+"""
+
+import argparse
+import threading
 import webbrowser
-import os
+
+import uvicorn
+
+# Plain ASCII: Windows consoles default to cp1252 and cannot encode box drawing.
+BANNER = """
+  ============================================================
+    THE REVIEW ROOM
+    NLP intelligence for the Amazon review corpus
+  ============================================================
+"""
 
 
-# Get the folder where run.py is located
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+def main():
+    parser = argparse.ArgumentParser(description="Serve The Review Room.")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--no-browser", action="store_true",
+                        help="do not open a browser window on start")
+    parser.add_argument("--reload", action="store_true",
+                        help="restart the server when source files change")
+    args = parser.parse_args()
 
-dashboard_path = os.path.join(BASE_DIR, "dashboard.py")
+    url = f"http://{args.host}:{args.port}"
+    print(BANNER)
+    print(f"  Serving on {url}")
+    print("  Press Ctrl+C to stop.\n")
 
-print("=" * 60)
-print("   AMAZON REVIEW NLP INTELLIGENCE SYSTEM")
-print("=" * 60)
-print()
-print("Starting dashboard...")
-print()
-
-
-# Start Streamlit
-process = subprocess.Popen(
-    [
-        sys.executable,
-        "-m",
-        "streamlit",
-        "run",
-        dashboard_path,
-        "--server.headless",
-        "true"
-    ],
-    cwd=BASE_DIR
-)
-
-
-# Give Streamlit time to start
-time.sleep(5)
-
-
-# Open dashboard in browser
-url = "http://localhost:8501"
-
-print(f"Opening dashboard: {url}")
-webbrowser.open(url)
-
-print()
-print("Dashboard is running.")
-print("Keep this terminal open while using the dashboard.")
-print("Press Ctrl+C to stop the project.")
-print()
-
-
-try:
-    process.wait()
-
-except KeyboardInterrupt:
-
-    print()
-    print("Stopping dashboard...")
-
-    process.terminate()
+    if not args.no_browser:
+        threading.Timer(1.5, webbrowser.open, args=(url,)).start()
 
     try:
-        process.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        process.kill()
+        uvicorn.run("app.server:api", host=args.host, port=args.port,
+                    reload=args.reload, log_level="info")
+    except KeyboardInterrupt:
+        print("\n  Stopped.")
 
-    print("Dashboard stopped.")
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en" data-boot="pending">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Review Room — NLP Intelligence</title>
+<meta name="description" content="An NLP reading room for the Amazon review corpus: sentiment, aspects, topics, retrieval and summarisation.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,700&family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/assets/styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2314130F'/%3E%3Cpath d='M7 24V8h7.4c3.1 0 5 1.7 5 4.6 0 2.2-1.1 3.7-3.1 4.3L20.8 24h-3.9l-3.9-6.4h-2.4V24H7zm3.6-9.1h3.2c1.4 0 2.2-.7 2.2-1.9s-.8-1.9-2.2-1.9h-3.2v3.8z' fill='%23F0EBE1'/%3E%3Ccircle cx='24' cy='10' r='3' fill='%23D8380F'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<div class="grain" aria-hidden="true"></div>
+
+<a class="skip" href="#canvas">Skip to content</a>
+
+<!-- ─────────────────────────  MOBILE BAR  ───────────────────────── -->
+<header class="topbar">
+  <span class="topbar__mark">The Review Room</span>
+  <button class="topbar__toggle" type="button" aria-expanded="false" aria-controls="rail" data-drawer>
+    <span class="topbar__bars" aria-hidden="true"><i></i><i></i></span>
+    <span class="sr">Modules</span>
+  </button>
+</header>
+<div class="scrim" data-drawer-close hidden></div>
+
+<!-- ─────────────────────────  RAIL  ───────────────────────── -->
+<aside class="rail" id="rail">
+  <div class="rail__masthead">
+    <span class="rail__rule" aria-hidden="true"></span>
+    <h1 class="masthead">
+      <span>The</span>
+      <span>Review</span>
+      <span>Room<b aria-hidden="true">.</b></span>
+    </h1>
+    <p class="masthead__sub">NLP intelligence for the<br>Amazon review corpus</p>
+  </div>
+
+  <nav class="nav" aria-label="Modules">
+    <a class="nav__item" href="#/corpus"    data-route="corpus"><span class="nav__no">01</span><span class="nav__name">Corpus</span><span class="nav__hint">Briefing</span></a>
+    <a class="nav__item" href="#/verdict"   data-route="verdict"><span class="nav__no">02</span><span class="nav__name">Verdict</span><span class="nav__hint">Sentiment</span></a>
+    <a class="nav__item" href="#/aspects"   data-route="aspects"><span class="nav__no">03</span><span class="nav__name">Aspects</span><span class="nav__hint">Facets</span></a>
+    <a class="nav__item" href="#/topics"    data-route="topics"><span class="nav__no">04</span><span class="nav__name">Topics</span><span class="nav__hint">Themes</span></a>
+    <a class="nav__item" href="#/retrieval" data-route="retrieval"><span class="nav__no">05</span><span class="nav__name">Retrieval</span><span class="nav__hint">Search</span></a>
+    <a class="nav__item" href="#/neighbours" data-route="neighbours"><span class="nav__no">06</span><span class="nav__name">Neighbours</span><span class="nav__hint">Similarity</span></a>
+    <a class="nav__item" href="#/condense"  data-route="condense"><span class="nav__no">07</span><span class="nav__name">Condense</span><span class="nav__hint">Summary</span></a>
+    <a class="nav__item" href="#/atlas"     data-route="atlas"><span class="nav__no">08</span><span class="nav__name">Atlas</span><span class="nav__hint">Plates</span></a>
+  </nav>
+
+  <div class="rail__foot">
+    <p class="micro">Engines</p>
+    <ul class="engines" id="engines">
+      <li><span class="engines__dot" data-state="idle"></span><span>booting…</span></li>
+    </ul>
+  </div>
+</aside>
+
+<!-- ─────────────────────────  CANVAS  ───────────────────────── -->
+<main class="canvas" id="canvas" tabindex="-1">
+
+<!-- 01 · CORPUS ................................................. -->
+<section class="view" data-view="corpus" hidden>
+  <header class="pagehead" data-reveal>
+    <p class="eyebrow"><span>01</span> Briefing</p>
+    <h2 class="display">The corpus,<br>read end to end.</h2>
+    <p class="lede">One hundred thousand Amazon reviews passed through eleven NLP stages —
+      preprocessed, scored, split by aspect, clustered into themes, condensed and embedded.
+      This is what came back.</p>
+  </header>
+
+  <div class="statrow" data-reveal id="corpus-stats"></div>
+
+  <section class="block" data-reveal>
+    <div class="block__head">
+      <h3 class="block__title">Polarity of the corpus</h3>
+      <p class="block__meta" id="ribbon-meta"></p>
+    </div>
+    <div id="corpus-ribbons"></div>
+  </section>
+
+  <section class="block" data-reveal>
+    <div class="block__head">
+      <h3 class="block__title">The pipeline</h3>
+      <p class="block__meta">Eleven stages, raw text to interface</p>
+    </div>
+    <ol class="pipeline">
+      <li><span>01</span>Dataset prep</li>
+      <li><span>02</span>Text preprocessing</li>
+      <li><span>03</span>N-gram analysis</li>
+      <li><span>04</span>Keyword extraction</li>
+      <li><span>05</span>Named entities</li>
+      <li><span>06</span>Sentiment</li>
+      <li><span>07</span>Aspect sentiment</li>
+      <li><span>08</span>Topic extraction</li>
+      <li><span>09</span>Summarisation</li>
+      <li><span>10</span>Embeddings</li>
+      <li><span>11</span>Retrieval</li>
+    </ol>
+  </section>
+
+  <div class="split" data-reveal>
+    <section class="block block--flush">
+      <div class="block__head">
+        <h3 class="block__title">Loudest aspects</h3>
+        <a class="block__link" href="#/aspects">All aspects →</a>
+      </div>
+      <ul class="leaders" id="corpus-aspects"></ul>
+    </section>
+    <section class="block block--flush">
+      <div class="block__head">
+        <h3 class="block__title">Topic volume</h3>
+        <a class="block__link" href="#/topics">Browse topics →</a>
+      </div>
+      <ul class="bars" id="corpus-topics"></ul>
+    </section>
+  </div>
+</section>
+
+<!-- 02 · VERDICT ................................................ -->
+<section class="view" data-view="verdict" hidden>
+  <header class="pagehead" data-reveal>
+    <p class="eyebrow"><span>02</span> Sentiment</p>
+    <h2 class="display">Hand it a review.<br>Get the reasoning.</h2>
+    <p class="lede">A hybrid engine: VADER polarity fused with a product-review rule set of
+      122 phrases and 45 keywords. Every verdict shows its working — the exact language
+      that moved the score, marked in the reviewer's own text.</p>
+  </header>
+
+  <form class="composer" data-reveal id="verdict-form">
+    <label class="field">
+      <span class="field__label">Customer review</span>
+      <textarea class="field__input field__input--tall" id="verdict-text" rows="6"
+        placeholder="The massager is very slow and should not be bought at any cost."
+        maxlength="20000"></textarea>
+    </label>
+    <div class="composer__foot">
+      <div class="samples">
+        <span class="micro">Try</span>
+        <button class="tag" type="button" data-sample="The massager is very slow and should not be bought at any cost. Complete waste of money.">a complaint</button>
+        <button class="tag" type="button" data-sample="Works perfectly out of the box. Excellent quality, easy to install and fast delivery — I would highly recommend it.">a rave</button>
+        <button class="tag" type="button" data-sample="It arrived on Tuesday. The box contained the unit, a manual and two cables.">a flat report</button>
+      </div>
+      <button class="btn" type="submit"><span>Analyse</span></button>
+    </div>
+  </form>
+
+  <div id="verdict-out" class="outlet"></div>
+</section>
+
+<!-- 03 · ASPECTS ............................................... -->
+<section class="view" data-view="aspects" hidden>
+  <header class="pagehead" data-reveal>
+    <p class="eyebrow"><span>03</span> Facets</p>
+    <h2 class="display">What exactly<br>are they judging?</h2>
+    <p class="lede">Reviews rarely praise or damn a whole product. They praise the battery and
+      damn the screen. Twenty-eight extracted aspects, each with its own polarity split.</p>
+  </header>
+
+  <div class="toolbar" data-reveal>
+    <label class="field field--inline">
+      <span class="field__label">Filter</span>
+      <input class="field__input" id="aspect-filter" type="search" placeholder="battery, price, shipping…" autocomplete="off">
+    </label>
+    <div class="segmented" role="group" aria-label="Sort aspects">
+      <button type="button" class="segmented__btn is-active" data-sort="total">Volume</button>
+      <button type="button" class="segmented__btn" data-sort="net">Net sentiment</button>
+      <button type="button" class="segmented__btn" data-sort="negative_share">Most negative</button>
+    </div>
+  </div>
+
+  <div class="split split--wide" data-reveal>
+    <div>
+      <p class="micro" style="margin-bottom:.7rem">Bars show polarity composition · figures show mention volume and net sentiment</p>
+      <div class="ledger" id="aspect-ledger"></div>
+    </div>
+    <aside class="dossier" id="aspect-dossier"></aside>
+  </div>
+</section>
+
+<!-- 04 · TOPICS ................................................ -->
+<section class="view" data-view="topics" hidden>
+  <header class="pagehead" data-reveal>
+    <p class="eyebrow"><span>04</span> Themes</p>
+    <h2 class="display">Ten conversations<br>running at once.</h2>
+    <p class="lede">Unsupervised clustering over the full corpus. Pick a cluster to read what
+      it actually sounds like.</p>
+  </header>
+
+  <div class="chiprow" data-reveal id="topic-chips"></div>
+  <div id="topic-out" class="outlet"></div>
+</section>
+
+<!-- 05 · RETRIEVAL ............................................. -->
+<section class="view" data-view="retrieval" hidden>
+  <header class="pagehead" data-reveal>
+    <p class="eyebrow"><span>05</span> Search</p>
+    <h2 class="display">Search by meaning,<br>not by word.</h2>
+    <p class="lede">Describe the sentiment you're hunting for. The corpus is ranked against
+      your description in embedding space — matching reviews need not share a single word
+      with your query.</p>
+  </header>
+
+  <form class="composer" data-reveal id="search-form">
+    <label class="field">
+      <span class="field__label">Query</span>
+      <input class="field__input field__input--lg" id="search-query" type="search"
+        placeholder="customers complaining about poor build quality" autocomplete="off">
+    </label>
+    <div class="composer__foot">
+      <div class="samples">
+        <span class="micro">Try</span>
+        <button class="tag" type="button" data-query="the packaging arrived damaged">damaged packaging</button>
+        <button class="tag" type="button" data-query="great value for the price">value for money</button>
+        <button class="tag" type="button" data-query="stopped working after a few weeks">early failure</button>
+      </div>
+      <div class="composer__actions">
+        <div class="stepper" data-stepper="search-k">
+          <span class="micro">Results</span>
+          <button type="button" data-step="-1" aria-label="Fewer results">–</button>
+          <output id="search-k">5</output>
+          <button type="button" data-step="1" aria-label="More results">+</button>
+        </div>
+        <button class="btn" type="submit"><span>Search</span></button>
+      </div>
+    </div>
+  </form>
+
+  <div id="search-out" class="outlet"></div>
+</section>
+
+<!-- 06 · NEIGHBOURS ............................................ -->
+<section class="view" data-view="neighbours" hidden>
+  <header class="pagehead" data-reveal>
+    <p class="eyebrow"><span>06</span> Similarity</p>
+    <h2 class="display">Every review has<br>company.</h2>
+    <p class="lede">Pick any indexed review and pull its nearest neighbours out of the
+      embedding space — the reviews saying the same thing in different words.</p>
+  </header>
+
+  <form class="composer" data-reveal id="neighbour-form">
+    <div class="composer__row">
+      <label class="field field--inline">
+        <span class="field__label">Review index</span>
+        <input class="field__input" id="neighbour-index" type="number" min="0" step="1" value="0" inputmode="numeric">
+      </label>
+      <button class="btn btn--ghost" type="button" id="neighbour-random"><span>Random</span></button>
+      <div class="stepper" data-stepper="neighbour-k">
+        <span class="micro">Neighbours</span>
+        <button type="button" data-step="-1" aria-label="Fewer neighbours">–</button>
+        <output id="neighbour-k">5</output>
+        <button type="button" data-step="1" aria-label="More neighbours">+</button>
+      </div>
+      <button class="btn" type="submit"><span>Find</span></button>
+    </div>
+  </form>
+
+  <div id="neighbour-source" class="outlet"></div>
+  <div id="neighbour-out" class="outlet"></div>
+</section>
+
+<!-- 07 · CONDENSE .............................................. -->
+<section class="view" data-view="condense" hidden>
+  <header class="pagehead" data-reveal>
+    <p class="eyebrow"><span>07</span> Summary</p>
+    <h2 class="display">Long review in.<br>The gist out.</h2>
+    <p class="lede">Extractive summarisation by TextRank: sentences are ranked by how central
+      they are to the review's own similarity graph. Nothing is invented — only the load-bearing
+      sentences survive.</p>
+  </header>
+
+  <form class="composer" data-reveal id="condense-form">
+    <label class="field">
+      <span class="field__label">Review</span>
+      <textarea class="field__input field__input--tall" id="condense-text" rows="9"
+        placeholder="Paste a long customer review…" maxlength="20000"></textarea>
+    </label>
+    <div class="composer__foot">
+      <div class="samples">
+        <span class="micro">or</span>
+        <button class="tag" type="button" id="condense-sample">load one from the corpus</button>
+      </div>
+      <div class="composer__actions">
+        <div class="stepper" data-stepper="condense-n">
+          <span class="micro">Sentences</span>
+          <button type="button" data-step="-1" aria-label="Fewer sentences">–</button>
+          <output id="condense-n">3</output>
+          <button type="button" data-step="1" aria-label="More sentences">+</button>
+        </div>
+        <button class="btn" type="submit"><span>Condense</span></button>
+      </div>
+    </div>
+  </form>
+
+  <div id="condense-out" class="outlet"></div>
+</section>
+
+<!-- 08 · ATLAS ................................................. -->
+<section class="view" data-view="atlas" hidden>
+  <header class="pagehead" data-reveal>
+    <p class="eyebrow"><span>08</span> Plates</p>
+    <h2 class="display">The corpus,<br>plotted.</h2>
+    <p class="lede">Six analytical plates rendered from the full hundred-thousand-review run.
+      Click any plate to enlarge.</p>
+  </header>
+  <div class="plates" data-reveal id="atlas"></div>
+</section>
+
+  <footer class="colophon">
+    <span>The Review Room</span>
+    <span>VADER · TextRank · MiniLM embeddings · spaCy</span>
+    <span id="colophon-corpus"></span>
+  </footer>
+</main>
+
+<!-- ─────────────────────────  LIGHTBOX  ───────────────────────── -->
+<dialog class="lightbox" id="lightbox">
+  <button class="lightbox__close" type="button" aria-label="Close">✕</button>
+  <figure>
+    <img alt="" id="lightbox-img">
+    <figcaption id="lightbox-cap"></figcaption>
+  </figure>
+</dialog>
+
+<script src="/assets/app.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+# Core service — required
+fastapi>=0.110
+uvicorn>=0.27
+pandas>=2.0
+numpy>=1.24
+
+# Full-fidelity NLP engines — optional.
+# Without these the app still runs: sentiment falls back to the rule lexicon,
+# summarisation to a built-in TextRank, and search to lexical ranking.
+vaderSentiment>=3.3.2
+sumy>=0.11
+sentence-transformers>=2.2
