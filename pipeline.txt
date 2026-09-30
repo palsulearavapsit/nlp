@@ -1,63 +1,74 @@
-                         AMAZON REVIEWS 
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │   DATASET PREP            │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │  TEXT PREPROCESSING       │
-                    └──────────┬──────────┘
-                                  │
-             ┌─────────────────┼─────────────────┐
-             ▼                     ▼                    ▼
-        N-GRAM ANALYSIS      KEYWORD EXTRACTION         NER
-             │                     │                      │
-             │              ┌────┴────┐                │
-             │               ▼         ▼                 │
-             │             TF-IDF     RAKE                │
-             │                                            │
-             └─────────────────┬──────────────── ┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │  SENTIMENT ANALYSIS       │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │ ASPECT-BASED              │
-                    │ SENTIMENT ANALYSIS        │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │   TOPIC EXTRACTION        │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │  TEXT SUMMARIZATION       │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │ SEMANTIC SIMILARITY       │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │   SEMANTIC SEARCH         │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │ NLP ANALYTICS             │
-                    │ & VISUALIZATION           │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │     DASHBOARD             │
-                    └─────────────────────┘
+THE NLP PIPELINE - which script ran each stage and what it produced
+(full explanation: PROJECT_GUIDE.md section 4, and the header of each script)
+
+The arrows show RUN ORDER, not data flow: stages 02-05 and 11 only print to
+the console and feed nothing; 06 reads amazon_reviews_100k.csv directly, and
+the charts are drawn from the CSVs of stages 06-08.
+
+                    AMAZON REVIEWS  (train.csv, 3.6M reviews, not in repo)
+                               |
+                               v
+                    +-----------------------+
+                    |  01 DATASET PREP      |  pipeline/01_prepare_dataset.py
+                    +-----------------------+  -> amazon_reviews_100k.csv
+                               |
+                               v
+                    +-----------------------+
+                    |  02 TEXT PREPROCESSING|  pipeline/02_preprocessing.py
+                    +-----------------------+  (exploratory, console only)
+                               |
+          +--------------------+--------------------+
+          v                    v                    v
+   03 N-GRAM ANALYSIS   04 KEYWORD EXTRACTION    05 NER          (exploratory,
+   uni/bi/trigrams          |          |         spaCy            console only)
+                          TF-IDF      RAKE
+          |                    |                    |
+          +--------------------+--------------------+
+                               |
+                               v
+                    +-----------------------+
+                    |  06 SENTIMENT (VADER) |  -> amazon_reviews_sentiment.csv
+                    +-----------------------+
+                               |
+                               v
+                    +-----------------------+
+                    |  07 ASPECT-BASED      |  -> amazon_review_aspects.csv
+                    |     SENTIMENT         |  -> aspect_sentiment_summary.csv
+                    +-----------------------+
+                               |
+                               v
+                    +-----------------------+
+                    |  08 TOPIC EXTRACTION  |  -> amazon_reviews_topics.csv
+                    |     (TF-IDF + NMF)    |  -> topic_keywords.csv
+                    +-----------------------+
+                               |
+                               v
+                    +-----------------------+
+                    |  09 SUMMARIZATION     |  -> amazon_reviews_summarized.csv
+                    |     (TextRank)        |     (the 5,000-review retrieval corpus)
+                    +-----------------------+
+                               |
+                               v
+                    +-----------------------+
+                    |  10 EMBEDDINGS +      |  -> review_embeddings.csv (5,000 x 384)
+                    |  SEMANTIC SIMILARITY  |
+                    +-----------------------+
+                               |
+                               v
+                    +-----------------------+
+                    |  11 SEMANTIC SEARCH   |  (demo, console only)
+                    +-----------------------+
+                               |
+                               v
+                    +-----------------------+
+                    |  NLP ANALYTICS &      |  app/plates.py -> visuals/*.png
+                    |  VISUALIZATION        |
+                    +-----------------------+
+                               |
+                               v
+                    +-----------------------+
+                    |  DASHBOARD            |  python run.py  (app/ + web/)
+                    +-----------------------+
+
+   12 EVALUATION (added later): pipeline/12_evaluate_sentiment.py
+      VADER alone 70.45% vs hybrid engine 76.27% agreement with human labels

@@ -1,0 +1,14 @@
+# Extra libraries needed ONLY to re-run the offline pipeline in this folder.
+# The web app does not need these (see ../requirements.txt for the app).
+#
+#   pip install -r pipeline/requirements.txt
+#   python -m spacy download en_core_web_sm      # model for stages 02 and 05
+
+pandas>=2.0
+scikit-learn>=1.2         # 03 n-grams, 04 TF-IDF, 08 TF-IDF + NMF, 10/11 cosine similarity
+nltk>=3.8                 # 02 stopword list, 04 tokenizer + stopwords for RAKE
+spacy>=3.5                # 02 tokenization + lemmatization, 05 named entity recognition
+rake-nltk>=1.0.6          # 04 RAKE key-phrase extraction
+vaderSentiment>=3.3.2     # 06 sentiment, 07 aspect sentiment
+sumy>=0.11                # 09 TextRank summarization
+sentence-transformers>=2.2  # 10 embeddings, 11 semantic search
