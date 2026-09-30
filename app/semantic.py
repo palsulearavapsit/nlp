@@ -4,6 +4,32 @@ Nearest-neighbour lookups run on the pre-computed embedding matrix and need no
 model at all. Free-text search has to encode the query, so it uses
 ``sentence-transformers`` when present and degrades to a transparent lexical
 ranker when it is not - the response always states which mode answered.
+
+ROLE IN THE PROJECT
+    Powers the "Retrieval" page:
+      search box             - POST /api/search   -> search(query)
+      "Find similar reviews" - POST /api/similar  -> neighbours(index)
+
+NLP CONCEPT - SENTENCE EMBEDDINGS
+    pipeline/10 turned each of the 5,000 corpus reviews into a 384-number
+    vector with the all-MiniLM-L6-v2 Transformer. Reviews with similar MEANING
+    get vectors that point in similar directions, even with no words in common.
+
+NLP CONCEPT - COSINE SIMILARITY
+    Closeness of two vectors = cosine of the angle between them:
+        cos(a, b) = (a . b) / (|a| x |b|)       1 = same direction, 0 = unrelated
+    See cosine_similarity() below - it scores one vector against all 5,000 rows
+    in a single matrix multiplication.
+
+TWO SEARCH MODES
+    semantic - the query is embedded with the SAME MiniLM model and compared by
+               cosine similarity. Finds reviews by meaning.
+    lexical  - fallback when sentence-transformers is not installed. Ranks by
+               IDF-weighted word overlap (a TF-IDF-style cosine over word
+               counts). Finds reviews that share the query's words, weighting
+               rare words more.
+    "Find similar" never needs the model: the stored vector of review i is already
+    in the matrix.
 """
 
 import math
@@ -19,8 +45,11 @@ _TOKEN_RE = re.compile(r"[a-z0-9']+")
 
 
 @lru_cache(maxsize=1)
-def _model():
-    """The sentence encoder, or ``None`` when the package is unavailable."""
+def _sentence_model():
+    """The sentence encoder, or ``None`` when the package is unavailable.
+
+    Loaded once (lru_cache) because loading the Transformer takes a few seconds.
+    """
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError:
@@ -32,18 +61,38 @@ def _model():
 
 
 def search_mode():
-    return "semantic" if _model() is not None else "lexical"
+    """Return "semantic" (MiniLM available) or "lexical" (fallback)."""
+    return "semantic" if _sentence_model() is not None else "lexical"
 
 
 def cosine_similarity(query_vector, matrix):
+    """Cosine similarity of one vector against every row of ``matrix``.
+
+    matrix @ query_vector computes all 5,000 dot products at once; dividing by
+    the product of the vector lengths (norms) turns each into a cosine.
+    The tiny 1e-10 avoids dividing by zero for an all-zero vector.
+    """
     query_vector = np.asarray(query_vector, dtype="float32")
     norms = np.linalg.norm(matrix, axis=1) * np.linalg.norm(query_vector)
     return matrix @ query_vector / (norms + 1e-10)
 
 
+# ---------------------------------------------------------------------------
+# Lexical fallback ranker (used only when sentence-transformers is missing)
+# ---------------------------------------------------------------------------
+
 @lru_cache(maxsize=1)
 def _lexical_index():
-    """IDF-weighted token bags for the fallback ranker."""
+    """IDF-weighted token bags for the fallback ranker.
+
+    Built once over the 5,000 reviews:
+      documents - one Counter {word: count} per review (bag of words)
+      idf       - inverse document frequency of every word:
+                      idf(t) = log(1 + N / (1 + df(t)))
+                  rare words get a high weight, common words a low one
+      norms     - the length of each review's weighted vector, pre-computed so
+                  every query only has to compute dot products
+    """
     frame = data.summaries()
     if frame is None:
         return None
@@ -68,6 +117,7 @@ def _lexical_index():
 
 
 def _lexical_scores(query):
+    """Cosine similarity between the query and every review, in IDF-weighted word space."""
     index = _lexical_index()
     if index is None:
         return None
@@ -85,14 +135,25 @@ def _lexical_scores(query):
     for i, bag in enumerate(documents):
         overlap = query_bag.keys() & bag.keys()
         if not overlap:
-            continue
+            continue  # no shared word -> similarity stays 0
+        # Dot product of the two weighted vectors: each word's weight is
+        # count x idf, so a shared word contributes q_count x d_count x idf^2.
         dot = sum(query_bag[t] * bag[t] * idf.get(t, 0.0) ** 2 for t in overlap)
         scores[i] = dot / (query_norm * norms[i])
     return scores
 
 
-def _rank(scores, top_k, exclude=None):
-    order = np.argsort(scores)[::-1]
+# ---------------------------------------------------------------------------
+# Shared ranking helpers
+# ---------------------------------------------------------------------------
+
+def _top_k_indices(scores, top_k, exclude=None):
+    """Row numbers of the ``top_k`` highest scores, best first.
+
+    ``exclude`` skips one row - used by neighbours() so a review is not listed
+    as its own nearest neighbour (its similarity to itself is always 1.0).
+    """
+    order = np.argsort(scores)[::-1]  # all rows, highest score first
     picked = []
     for index in order:
         if exclude is not None and int(index) == int(exclude):
@@ -103,26 +164,41 @@ def _rank(scores, top_k, exclude=None):
     return picked
 
 
-def _hydrate(indices, scores):
+def _attach_review_details(indices, scores):
+    """Turn row numbers into full result records (title, text, summary, ...).
+
+    Works because row i of the embedding matrix and row i of the summaries CSV
+    are the same review (see data.embeddings()).
+    """
     results = []
     for rank, index in enumerate(indices, start=1):
         record = data.review_at(index)
         if record is None:
             continue
         record["rank"] = rank
+        # Replaces the review's VADER score with its similarity to the query.
         record["score"] = float(scores[index])
         results.append(record)
     return results
 
 
+# ---------------------------------------------------------------------------
+# Public API (called by app/server.py)
+# ---------------------------------------------------------------------------
+
 def search(query, top_k=config.DEFAULT_RESULTS):
-    """Rank reviews against a free-text query."""
+    """Rank reviews against a free-text query.
+
+    1. Encode the query into the same 384-d space as the reviews (semantic mode).
+    2. Score every review with cosine similarity.
+    3. Return the top_k reviews with their scores.
+    """
     matrix = data.embeddings()
-    model = _model()
+    model = _sentence_model()
 
     if model is not None and matrix is not None:
-        vector = model.encode(query, convert_to_numpy=True)
-        scores = cosine_similarity(vector, matrix)
+        vector = model.encode(query, convert_to_numpy=True)  # shape (384,)
+        scores = cosine_similarity(vector, matrix)           # shape (5000,)
         mode = "semantic"
     else:
         scores = _lexical_scores(query)
@@ -132,11 +208,15 @@ def search(query, top_k=config.DEFAULT_RESULTS):
         return {"mode": mode, "results": [], "error": "corpus unavailable"}
 
     limit = max(0, min(top_k, len(scores)))
-    return {"mode": mode, "results": _hydrate(_rank(scores, limit), scores)}
+    return {"mode": mode, "results": _attach_review_details(_top_k_indices(scores, limit), scores)}
 
 
 def neighbours(index, top_k=config.DEFAULT_RESULTS):
-    """Reviews closest in embedding space to the review at ``index``."""
+    """Reviews closest in embedding space to the review at ``index``.
+
+    The "query" is the stored embedding of review ``index`` itself, so no model
+    is needed - this always runs in semantic mode.
+    """
     matrix = data.embeddings()
     if matrix is None:
         return {"mode": "semantic", "results": [], "error": "embeddings unavailable"}
@@ -145,4 +225,5 @@ def neighbours(index, top_k=config.DEFAULT_RESULTS):
 
     scores = cosine_similarity(matrix[int(index)], matrix)
     limit = max(0, min(top_k, len(scores) - 1))
-    return {"mode": "semantic", "results": _hydrate(_rank(scores, limit, index), scores)}
+    return {"mode": "semantic",
+            "results": _attach_review_details(_top_k_indices(scores, limit, index), scores)}

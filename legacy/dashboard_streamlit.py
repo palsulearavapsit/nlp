@@ -1,3 +1,16 @@
+# ============================================================
+# LEGACY - NOT USED BY THE CURRENT APP
+# ------------------------------------------------------------
+# This is the project's first dashboard, built with Streamlit. It was
+# replaced by the FastAPI + HTML interface in app/ and web/ (python run.py).
+# Its sentiment lexicons and scoring rules were copied into app/lexicon.py
+# and app/sentiment.py (one small whitespace-matching difference is noted at
+# the top of app/sentiment.py).
+#
+# Kept for reference only. It looks for the CSV files next to itself
+# (BASE_DIR below), so it would need them copied into legacy/ to run.
+# ============================================================
+
 import os
 import re
 import numpy as np

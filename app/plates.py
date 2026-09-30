@@ -5,6 +5,12 @@ sit in. These redraw the same six figures from the same source CSVs using the
 design system's ink, newsprint and signal colours.
 
     python -m app.plates
+
+ROLE IN THE PROJECT
+    NLP stage "analytics & visualisation". It turns the pipeline CSVs into the
+    six PNG charts ("plates") in visuals/, shown at the bottom of the Corpus page. The charts
+    are drawn once, ahead of time; the server only serves the image files.
+    It is not part of the web server. Run it by hand after the CSVs change.
 """
 
 import os
@@ -50,6 +56,7 @@ WORD_RE = re.compile(r"[a-z']{3,}")
 
 
 def _canvas(title, subtitle):
+    """A blank figure styled like the web interface, with title and subtitle."""
     figure, axes = plt.subplots(figsize=FIGSIZE, dpi=DPI)
     figure.patch.set_facecolor(PAPER)
     axes.set_facecolor(PAPER)
@@ -100,6 +107,7 @@ def _label_bars(axes, bars, values, colour=INK):
 
 
 def sentiment_distribution():
+    """Bar chart: how many reviews VADER labelled positive / neutral / negative."""
     labels = data.sentiment_labels()
     counts = labels["vader_sentiment"].astype(str).str.lower().value_counts()
     order = ["positive", "neutral", "negative"]
@@ -117,6 +125,7 @@ def sentiment_distribution():
 
 
 def topic_distribution():
+    """Bar chart: reviews per NMF topic (the largest topic in the signal colour)."""
     frame = data.topics()
     counts = frame["topic"].value_counts().sort_index()
     values = [int(v) for v in counts.values]
@@ -136,6 +145,7 @@ def topic_distribution():
 
 
 def aspect_frequency():
+    """Horizontal bars: how many reviews mention each aspect."""
     frame = data.aspect_summary().copy()
     frame["total"] = frame[["negative", "neutral", "positive"]].sum(axis=1)
     frame = frame.sort_values("total", ascending=True)
@@ -156,6 +166,7 @@ def aspect_frequency():
 
 
 def aspect_sentiment():
+    """100%-stacked bars: positive / neutral / negative share for the 16 biggest aspects."""
     frame = data.aspect_summary().copy()
     frame["total"] = frame[["negative", "neutral", "positive"]].sum(axis=1)
     frame = frame.sort_values("total", ascending=False).head(16)
@@ -183,6 +194,7 @@ def aspect_sentiment():
 
 
 def review_length_distribution():
+    """Histogram of review length in words, with the median marked."""
     frame = data.topics()
     lengths = frame["review"].astype(str).str.split().str.len()
     trimmed = lengths[lengths <= lengths.quantile(0.99)]
@@ -203,6 +215,7 @@ def review_length_distribution():
 
 
 def top_words():
+    """Most frequent words in the first 40,000 reviews after removing stopwords."""
     frame = data.topics()
     counter = Counter()
     for text in frame["review"].astype(str).head(40000):

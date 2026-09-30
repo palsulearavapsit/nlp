@@ -1,4 +1,28 @@
 <!doctype html>
+<!--
+  THE REVIEW ROOM - the single page of the web interface.
+
+  HOW THIS PAGE WORKS
+    * All six "pages" (views) below live in this one HTML file. Each is a
+      <section class="view" data-view="NAME">. Only one is visible at a time.
+      Page 01 is the overview; pages 02-06 each demonstrate one NLP technique.
+    * web/assets/app.js reads the URL hash (#/verdict, #/topics, ...), shows
+      the matching section and calls that view's controller, which fetches
+      JSON from the Python API (app/server.py) and fills in the empty
+      containers (e.g. <div id="verdict-out">).
+    * Every view opens with a "How this works" panel (<details class="explain">)
+      that explains the NLP technique behind it and names the code that runs.
+
+  VIEW              JS controller (app.js)   API endpoint           Python code
+  01 corpus         corpus                   GET  /api/overview     app/server.py overview()
+                    (+ charts)               GET  /visuals/*.png    images drawn by app/plates.py
+  02 verdict        verdict                  POST /api/sentiment    app/sentiment.py analyze()
+  03 aspects        aspects                  GET  /api/aspects      app/server.py aspect_table()
+  04 topics         topics                   GET  /api/topics       app/server.py topic_list()
+  05 retrieval      retrieval                POST /api/search       app/semantic.py search()
+                    (+ similar reviews)      POST /api/similar      app/semantic.py neighbours()
+  06 condense       condense                 POST /api/summarize    app/summarize.py summarize()
+-->
 <html lang="en" data-boot="pending">
 <head>
 <meta charset="utf-8">
@@ -8,10 +32,22 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,700&family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="/assets/styles.css">
+<!-- "?v=2" forces browsers that cached an older copy to fetch the new file once;
+     after that, app/server.py makes them re-check the file on every load. -->
+<link rel="stylesheet" href="/assets/styles.css?v=2">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2314130F'/%3E%3Cpath d='M7 24V8h7.4c3.1 0 5 1.7 5 4.6 0 2.2-1.1 3.7-3.1 4.3L20.8 24h-3.9l-3.9-6.4h-2.4V24H7zm3.6-9.1h3.2c1.4 0 2.2-.7 2.2-1.9s-.8-1.9-2.2-1.9h-3.2v3.8z' fill='%23F0EBE1'/%3E%3Ccircle cx='24' cy='10' r='3' fill='%23D8380F'/%3E%3C/svg%3E">
 </head>
 <body>
+
+<!-- Only visible when index.html is opened directly as a file: then the
+     stylesheet (which hides this box) and app.js cannot load. Through
+     `python run.py` the stylesheet loads and this box never shows. -->
+<div class="boot-notice" role="alert" style="max-width:40rem;margin:2rem auto;padding:1rem 1.25rem;border:2px solid #B33417;font-family:sans-serif;line-height:1.5">
+  <strong>The Review Room is not running.</strong>
+  <p>This page needs its Python server. In the project folder run
+    <code>python run.py</code>, then open <a href="http://127.0.0.1:8000">http://127.0.0.1:8000</a>.
+    Opening <code>index.html</code> directly does not work.</p>
+</div>
 
 <div class="grain" aria-hidden="true"></div>
 
@@ -28,6 +64,8 @@
 <div class="scrim" data-drawer-close hidden></div>
 
 <!-- ─────────────────────────  RAIL  ───────────────────────── -->
+<!-- Left navigation. The small grey line under each page name is the NLP
+     technique that page demonstrates. -->
 <aside class="rail" id="rail">
   <div class="rail__masthead">
     <span class="rail__rule" aria-hidden="true"></span>
@@ -40,16 +78,16 @@
   </div>
 
   <nav class="nav" aria-label="Modules">
-    <a class="nav__item" href="#/corpus"    data-route="corpus"><span class="nav__no">01</span><span class="nav__name">Corpus</span><span class="nav__hint">Briefing</span></a>
-    <a class="nav__item" href="#/verdict"   data-route="verdict"><span class="nav__no">02</span><span class="nav__name">Verdict</span><span class="nav__hint">Sentiment</span></a>
-    <a class="nav__item" href="#/aspects"   data-route="aspects"><span class="nav__no">03</span><span class="nav__name">Aspects</span><span class="nav__hint">Facets</span></a>
-    <a class="nav__item" href="#/topics"    data-route="topics"><span class="nav__no">04</span><span class="nav__name">Topics</span><span class="nav__hint">Themes</span></a>
-    <a class="nav__item" href="#/retrieval" data-route="retrieval"><span class="nav__no">05</span><span class="nav__name">Retrieval</span><span class="nav__hint">Search</span></a>
-    <a class="nav__item" href="#/neighbours" data-route="neighbours"><span class="nav__no">06</span><span class="nav__name">Neighbours</span><span class="nav__hint">Similarity</span></a>
-    <a class="nav__item" href="#/condense"  data-route="condense"><span class="nav__no">07</span><span class="nav__name">Condense</span><span class="nav__hint">Summary</span></a>
-    <a class="nav__item" href="#/atlas"     data-route="atlas"><span class="nav__no">08</span><span class="nav__name">Atlas</span><span class="nav__hint">Plates</span></a>
+    <a class="nav__item" href="#/corpus"    data-route="corpus"><span class="nav__no">01</span><span class="nav__name">Corpus</span><span class="nav__hint">Overview &amp; charts</span></a>
+    <a class="nav__item" href="#/verdict"   data-route="verdict"><span class="nav__no">02</span><span class="nav__name">Verdict</span><span class="nav__hint">Sentiment analysis</span></a>
+    <a class="nav__item" href="#/aspects"   data-route="aspects"><span class="nav__no">03</span><span class="nav__name">Aspects</span><span class="nav__hint">Aspect sentiment</span></a>
+    <a class="nav__item" href="#/topics"    data-route="topics"><span class="nav__no">04</span><span class="nav__name">Topics</span><span class="nav__hint">Topic modelling</span></a>
+    <a class="nav__item" href="#/retrieval" data-route="retrieval"><span class="nav__no">05</span><span class="nav__name">Retrieval</span><span class="nav__hint">Semantic search &amp; similarity</span></a>
+    <a class="nav__item" href="#/condense"  data-route="condense"><span class="nav__no">06</span><span class="nav__name">Condense</span><span class="nav__hint">Summarization</span></a>
   </nav>
 
+  <!-- Filled by wireStatus() in app.js from GET /api/status: which engine is
+       answering each feature (green = full engine, amber = fallback). -->
   <div class="rail__foot">
     <p class="micro">Engines</p>
     <ul class="engines" id="engines">
@@ -61,15 +99,51 @@
 <!-- ─────────────────────────  CANVAS  ───────────────────────── -->
 <main class="canvas" id="canvas" tabindex="-1">
 
-<!-- 01 · CORPUS ................................................. -->
+<!-- 01 · CORPUS .................................................
+     Whole-corpus statistics computed OFFLINE by pipeline/ and counted here,
+     plus the six chart images drawn by `python -m app.plates` (bottom block).
+     JS: corpus  ·  API: GET /api/overview (+ /visuals/*.png)
+     Python: app/server.py overview(), charts by app/plates.py -->
+
 <section class="view" data-view="corpus" hidden>
   <header class="pagehead" data-reveal>
     <p class="eyebrow"><span>01</span> Briefing</p>
     <h2 class="display">The corpus,<br>read end to end.</h2>
-    <p class="lede">One hundred thousand Amazon reviews passed through eleven NLP stages —
-      preprocessed, scored, split by aspect, clustered into themes, condensed and embedded.
-      This is what came back.</p>
+    <p class="lede">One hundred thousand Amazon reviews went through an eleven-stage NLP
+      pipeline — every review scored, split by aspect and grouped into topics, and five
+      thousand of them condensed and embedded. This is what came back.</p>
   </header>
+
+  <details class="explain" data-reveal>
+    <summary class="explain__toggle">
+      <span class="explain__kicker">How this works</span>
+      <span class="explain__technique">Corpus analytics · results of the offline pipeline</span>
+    </summary>
+    <div class="explain__body">
+      <ol class="explain__steps">
+        <li><b>Dataset.</b> 100,000 Amazon reviews: 50,000 positive and 50,000 negative, sampled
+          from the public Amazon Review Polarity dataset (<code>pipeline/01</code>).</li>
+        <li><b>Offline NLP, run once.</b> VADER labelled every review (<code>pipeline/06</code>),
+          28 product aspects were detected (<code>07</code>), NMF found 10 topics (<code>08</code>),
+          5,000 reviews were summarized (<code>09</code>) and embedded as vectors (<code>10</code>).
+          The results were saved as CSV files.</li>
+        <li><b>This page only counts.</b> The server reads those CSVs and totals them. No model runs
+          when this page opens.</li>
+        <li><b>Charts.</b> The six charts at the bottom were drawn ahead of time from the same CSVs by
+          <code>app/plates.py</code> (matplotlib). Regenerate them with <code>python -m app.plates</code>.</li>
+      </ol>
+      <dl class="explain__facts">
+        <div><dt>Human labels vs VADER</dt><dd>Human labels come from star ratings: 1–2★ negative,
+          4–5★ positive, 3★ left out. So there is no human “neutral”. VADER is a lexicon-based model
+          that can also answer neutral.</dd></div>
+        <div><dt>Model agreement</dt><dd>The share of reviews where VADER’s label equals the human
+          label, i.e. VADER’s accuracy on this data. Most misses are complaints VADER read as positive,
+          which is why the Verdict page adds product-review rules.</dd></div>
+        <div><dt>Code</dt><dd><code>GET /api/overview</code> → <code>app/server.py · overview()</code>;
+          charts: <code>app/plates.py</code> (captions in <code>app/config.py · PLATES</code>)</dd></div>
+      </dl>
+    </div>
+  </details>
 
   <div class="statrow" data-reveal id="corpus-stats"></div>
 
@@ -81,23 +155,24 @@
     <div id="corpus-ribbons"></div>
   </section>
 
+  <!-- The eleven scripts in pipeline/, in the order they ran. -->
   <section class="block" data-reveal>
     <div class="block__head">
       <h3 class="block__title">The pipeline</h3>
-      <p class="block__meta">Eleven stages, raw text to interface</p>
+      <p class="block__meta">Eleven stages · code in pipeline/ · 02–05 exploratory</p>
     </div>
     <ol class="pipeline">
-      <li><span>01</span>Dataset prep</li>
-      <li><span>02</span>Text preprocessing</li>
-      <li><span>03</span>N-gram analysis</li>
-      <li><span>04</span>Keyword extraction</li>
-      <li><span>05</span>Named entities</li>
-      <li><span>06</span>Sentiment</li>
-      <li><span>07</span>Aspect sentiment</li>
-      <li><span>08</span>Topic extraction</li>
-      <li><span>09</span>Summarisation</li>
-      <li><span>10</span>Embeddings</li>
-      <li><span>11</span>Retrieval</li>
+      <li><span>01</span><p>Dataset prep<em>Balanced 50k + 50k sample</em></p></li>
+      <li><span>02</span><p>Text preprocessing<em>Tokens, stopwords, lemmas · exploratory</em></p></li>
+      <li><span>03</span><p>N-gram analysis<em>Uni-, bi-, trigram counts · exploratory</em></p></li>
+      <li><span>04</span><p>Keyword extraction<em>TF-IDF and RAKE · exploratory</em></p></li>
+      <li><span>05</span><p>Named entities<em>spaCy NER · exploratory</em></p></li>
+      <li><span>06</span><p>Sentiment<em>VADER compound score</em></p></li>
+      <li><span>07</span><p>Aspect sentiment<em>28-aspect lexicon + VADER</em></p></li>
+      <li><span>08</span><p>Topic extraction<em>TF-IDF + NMF, 10 topics</em></p></li>
+      <li><span>09</span><p>Summarisation<em>TextRank, 5,000 reviews</em></p></li>
+      <li><span>10</span><p>Embeddings<em>MiniLM, 384 dimensions</em></p></li>
+      <li><span>11</span><p>Retrieval<em>Cosine-similarity search</em></p></li>
     </ol>
   </section>
 
@@ -117,9 +192,21 @@
       <ul class="bars" id="corpus-topics"></ul>
     </section>
   </div>
+
+  <!-- Six chart images ("plates") drawn by app/plates.py from the pipeline CSVs.
+       Filled by renderPlates() in app.js; click one to enlarge it. -->
+  <section class="block" data-reveal>
+    <div class="block__head">
+      <h3 class="block__title">The corpus, plotted</h3>
+      <p class="block__meta">Six charts from the full run · click to enlarge</p>
+    </div>
+    <div class="plates plates--flush" id="corpus-plates"></div>
+  </section>
 </section>
 
-<!-- 02 · VERDICT ................................................ -->
+<!-- 02 · VERDICT ................................................
+     LIVE sentiment analysis of the text you type.
+     JS: verdict  ·  API: POST /api/sentiment  ·  Python: app/sentiment.py analyze() -->
 <section class="view" data-view="verdict" hidden>
   <header class="pagehead" data-reveal>
     <p class="eyebrow"><span>02</span> Sentiment</p>
@@ -128,6 +215,38 @@
       122 phrases and 45 keywords. Every verdict shows its working — the exact language
       that moved the score, marked in the reviewer's own text.</p>
   </header>
+
+  <details class="explain" data-reveal>
+    <summary class="explain__toggle">
+      <span class="explain__kicker">How this works</span>
+      <span class="explain__technique">Hybrid lexicon-based sentiment analysis · VADER + product-review rules</span>
+    </summary>
+    <div class="explain__body">
+      <ol class="explain__steps">
+        <li><b>Rule lexicon.</b> Find the 122 phrases and 45 keywords of <code>app/lexicon.py</code>
+          in the text. Rule score = 0.40 × positive phrases + 0.08 × positive keywords − 0.50 ×
+          negative phrases − 0.10 × negative keywords.</li>
+        <li><b>VADER.</b> A 7,500-word dictionary of rated words plus rules for negation
+          (“not good”), intensifiers (“very”), “!!!”, CAPITALS and “but”. It outputs a
+          <i>compound</i> score from −1 to +1.</li>
+        <li><b>Combine.</b> If only negative (or only positive) phrases were found, they decide the
+          label. Otherwise final = 0.70 × compound + 0.30 × rule score; ≥ +0.05 is Positive,
+          ≤ −0.05 is Negative, anything between is Neutral.</li>
+        <li><b>Hard rules.</b> “very slow”, “don’t buy”, “waste of money” and their variants always
+          force Negative.</li>
+      </ol>
+      <dl class="explain__facts">
+        <div><dt>Why a hybrid?</dt><dd>On the 100k reviews, VADER alone labelled 24,180 of the 50,000
+          human-negative reviews positive. VADER scores complaints like “stopped working” only weakly
+          (−0.23), so praise elsewhere outvotes them: “The screen is great… but it stopped working”
+          gets +0.38 from VADER. The rule lexicon gives such phrases a fixed heavy weight, and
+          agreement with the human labels rises from 70.45% to 76.27% (<code>pipeline/12</code>).</dd></div>
+        <div><dt>Reading the output</dt><dd>The highlighted words are the evidence. The numbered
+          steps under “How the verdict was reached” show the exact arithmetic for this review.</dd></div>
+        <div><dt>Code</dt><dd><code>POST /api/sentiment</code> → <code>app/sentiment.py · analyze()</code></dd></div>
+      </dl>
+    </div>
+  </details>
 
   <form class="composer" data-reveal id="verdict-form">
     <label class="field">
@@ -150,14 +269,46 @@
   <div id="verdict-out" class="outlet"></div>
 </section>
 
-<!-- 03 · ASPECTS ............................................... -->
+<!-- 03 · ASPECTS ...............................................
+     Aspect-based sentiment, computed OFFLINE by pipeline/07.
+     JS: aspects  ·  API: GET /api/aspects, GET /api/aspects/{aspect}/reviews
+     Python: app/server.py aspect_table(), aspect_reviews() -->
 <section class="view" data-view="aspects" hidden>
   <header class="pagehead" data-reveal>
     <p class="eyebrow"><span>03</span> Facets</p>
     <h2 class="display">What exactly<br>are they judging?</h2>
     <p class="lede">Reviews rarely praise or damn a whole product. They praise the battery and
-      damn the screen. Twenty-eight extracted aspects, each with its own polarity split.</p>
+      damn the screen. Twenty-eight product aspects, each detected by keyword and given its own
+      polarity split.</p>
   </header>
+
+  <details class="explain" data-reveal>
+    <summary class="explain__toggle">
+      <span class="explain__kicker">How this works</span>
+      <span class="explain__technique">Aspect-based sentiment analysis · aspect lexicon + VADER</span>
+    </summary>
+    <div class="explain__body">
+      <ol class="explain__steps">
+        <li><b>Aspect lexicon.</b> 28 hand-picked aspect words: price, quality, battery, shipping,
+          book, movie, music and more.</li>
+        <li><b>Detect.</b> A review mentions an aspect when that word appears as a whole word
+          (regex <code>\b…\b</code>, so “price” does not match “priceless”). One review can mention
+          several aspects.</li>
+        <li><b>Score.</b> The review’s VADER label (positive / neutral / negative) is attached to
+          every aspect it mentions.</li>
+        <li><b>Aggregate.</b> Count the labels per aspect → <code>aspect_sentiment_summary.csv</code>.</li>
+      </ol>
+      <dl class="explain__facts">
+        <div><dt>Reading the output</dt><dd>Each bar shows the share of positive (green), neutral
+          (grey) and negative (red) mentions. The figures are the mention count and net sentiment =
+          (positive − negative) ÷ total, from −100% to +100%.</dd></div>
+        <div><dt>Limitation</dt><dd>The label belongs to the whole review, not to the sentence that
+          names the aspect. “Great battery, awful screen” gives both aspects the same label.</dd></div>
+        <div><dt>Code</dt><dd><code>pipeline/07_aspect_sentiment.py</code> (offline) →
+          <code>GET /api/aspects</code> → <code>app/server.py · aspect_table()</code></dd></div>
+      </dl>
+    </div>
+  </details>
 
   <div class="toolbar" data-reveal>
     <label class="field field--inline">
@@ -180,28 +331,100 @@
   </div>
 </section>
 
-<!-- 04 · TOPICS ................................................ -->
+<!-- 04 · TOPICS ................................................
+     NMF topic modelling, computed OFFLINE by pipeline/08.
+     JS: topics  ·  API: GET /api/topics, GET /api/topics/{topic}/reviews
+     Python: app/server.py topic_list(), topic_reviews() -->
 <section class="view" data-view="topics" hidden>
   <header class="pagehead" data-reveal>
     <p class="eyebrow"><span>04</span> Themes</p>
     <h2 class="display">Ten conversations<br>running at once.</h2>
-    <p class="lede">Unsupervised clustering over the full corpus. Pick a cluster to read what
-      it actually sounds like.</p>
+    <p class="lede">Unsupervised topic modelling (TF-IDF + NMF) over the full corpus. Pick a
+      topic to see its keywords and read what it actually sounds like.</p>
   </header>
+
+  <details class="explain" data-reveal>
+    <summary class="explain__toggle">
+      <span class="explain__kicker">How this works</span>
+      <span class="explain__technique">Topic modelling · TF-IDF + Non-negative Matrix Factorization</span>
+    </summary>
+    <div class="explain__body">
+      <ol class="explain__steps">
+        <li><b>Clean.</b> Lowercase each review and strip URLs, digits and punctuation.</li>
+        <li><b>TF-IDF.</b> Turn each review into weights for 10,000 words and word pairs. A term
+          weighs more when it is frequent in that review but rare across all reviews.</li>
+        <li><b>NMF.</b> Factorise the 100,000 × 10,000 matrix into
+          <i>reviews × 10 topics</i> times <i>10 topics × terms</i>, with no negative numbers
+          allowed, so each review is an additive mix of topics.</li>
+        <li><b>Keywords.</b> A topic’s keywords are its 10 highest-weighted terms.</li>
+        <li><b>Assign.</b> Each review goes to its strongest topic (argmax).</li>
+      </ol>
+      <dl class="explain__facts">
+        <div><dt>Unsupervised</dt><dd>Nobody told the model what the topics are. It found groups of
+          words that tend to occur together. NMF only outputs topic numbers; the short names were
+          written by hand from each topic’s keywords.</dd></div>
+        <div><dt>Reading the output</dt><dd>The polarity bar shows how VADER labelled the reviews in
+          that topic. The sample reviews are a fixed sample from the first 500 reviews whose strongest
+          topic is this one, so they stay the same between visits.</dd></div>
+        <div><dt>Code</dt><dd><code>pipeline/08_topic_extraction.py</code> (offline) →
+          <code>GET /api/topics</code> → <code>app/server.py · topic_list()</code></dd></div>
+      </dl>
+    </div>
+  </details>
 
   <div class="chiprow" data-reveal id="topic-chips"></div>
   <div id="topic-out" class="outlet"></div>
 </section>
 
-<!-- 05 · RETRIEVAL ............................................. -->
+<!-- 05 · RETRIEVAL .............................................
+     LIVE semantic search over the 5,000 embedded reviews, plus
+     "Find similar reviews" (nearest neighbours of one review).
+     JS: retrieval + similarReviews
+     API: POST /api/search, POST /api/similar
+     Python: app/semantic.py search(), neighbours() -->
 <section class="view" data-view="retrieval" hidden>
   <header class="pagehead" data-reveal>
     <p class="eyebrow"><span>05</span> Search</p>
     <h2 class="display">Search by meaning,<br>not by word.</h2>
     <p class="lede">Describe the sentiment you're hunting for. The corpus is ranked against
       your description in embedding space — matching reviews need not share a single word
-      with your query.</p>
+      with your query. Then pick any review and find the ones saying the same thing.</p>
   </header>
+
+  <details class="explain" data-reveal>
+    <summary class="explain__toggle">
+      <span class="explain__kicker">How this works</span>
+      <span class="explain__technique">Semantic search &amp; similarity · sentence embeddings + cosine similarity</span>
+    </summary>
+    <div class="explain__body">
+      <ol class="explain__steps">
+        <li><b>Embeddings, made offline.</b> Each of the 5,000 corpus reviews was converted by the
+          <code>all-MiniLM-L6-v2</code> Transformer into a vector of 384 numbers that captures its
+          meaning (<code>pipeline/10</code>).</li>
+        <li><b>Search.</b> Your query goes through the same model, so it lands in the same
+          384-dimensional space.</li>
+        <li><b>Find similar.</b> Instead of a typed query, use the stored vector of review
+          #<i>i</i> (row <i>i</i> of <code>review_embeddings.csv</code>). No model is needed.</li>
+        <li><b>Compare.</b> Cosine similarity between that vector and all 5,000 review vectors,
+          computed in one matrix multiplication.</li>
+        <li><b>Rank.</b> Return the highest-scoring reviews, best first. When finding similar
+          reviews, the review itself (similarity 1.0) is skipped.</li>
+      </ol>
+      <dl class="explain__facts">
+        <div><dt>Reading the score</dt><dd>Similarity is the cosine of the angle between two
+          vectors: near 1 means the same meaning, near 0 means unrelated. A review can score high
+          without sharing a single word with the query.</dd></div>
+        <div><dt>Fallback</dt><dd>Without <code>sentence-transformers</code> installed, search
+          runs in <i>lexical</i> mode instead: cosine similarity of IDF-weighted word counts. The
+          left rail shows which mode is live. “Find similar” always works, because every vector
+          is already stored.</dd></div>
+        <div><dt>Review index</dt><dd>The row number (0–4,999) in
+          <code>amazon_reviews_summarized.csv</code>, the 5,000-review retrieval corpus.</dd></div>
+        <div><dt>Code</dt><dd><code>POST /api/search</code> → <code>app/semantic.py · search()</code>;
+          <code>POST /api/similar</code> → <code>app/semantic.py · neighbours()</code></dd></div>
+      </dl>
+    </div>
+  </details>
 
   <form class="composer" data-reveal id="search-form">
     <label class="field">
@@ -229,47 +452,81 @@
   </form>
 
   <div id="search-out" class="outlet"></div>
-</section>
 
-<!-- 06 · NEIGHBOURS ............................................ -->
-<section class="view" data-view="neighbours" hidden>
-  <header class="pagehead" data-reveal>
-    <p class="eyebrow"><span>06</span> Similarity</p>
-    <h2 class="display">Every review has<br>company.</h2>
-    <p class="lede">Pick any indexed review and pull its nearest neighbours out of the
-      embedding space — the reviews saying the same thing in different words.</p>
-  </header>
-
-  <form class="composer" data-reveal id="neighbour-form">
-    <div class="composer__row">
-      <label class="field field--inline">
-        <span class="field__label">Review index</span>
-        <input class="field__input" id="neighbour-index" type="number" min="0" step="1" value="0" inputmode="numeric">
-      </label>
-      <button class="btn btn--ghost" type="button" id="neighbour-random"><span>Random</span></button>
-      <div class="stepper" data-stepper="neighbour-k">
-        <span class="micro">Neighbours</span>
-        <button type="button" data-step="-1" aria-label="Fewer neighbours">–</button>
-        <output id="neighbour-k">5</output>
-        <button type="button" data-step="1" aria-label="More neighbours">+</button>
-      </div>
-      <button class="btn" type="submit"><span>Find</span></button>
+  <!-- Find similar reviews: nearest neighbours of one review in embedding
+       space (no model needed). Every search result also has a
+       "Find similar" button that fills in this form and runs it.
+       JS: similarReviews · API: POST /api/similar · Python: app/semantic.py neighbours() -->
+  <section class="block" data-reveal id="similar">
+    <div class="block__head">
+      <h3 class="block__title">Find similar reviews</h3>
+      <p class="block__meta">Nearest neighbours in embedding space · or press “Find similar” on a result</p>
     </div>
-  </form>
 
-  <div id="neighbour-source" class="outlet"></div>
-  <div id="neighbour-out" class="outlet"></div>
+    <form class="composer composer--flush" id="neighbour-form">
+      <div class="composer__row">
+        <label class="field field--inline">
+          <span class="field__label">Review index</span>
+          <input class="field__input" id="neighbour-index" type="number" min="0" step="1" value="0" inputmode="numeric">
+        </label>
+        <button class="btn btn--ghost" type="button" id="neighbour-random"><span>Random</span></button>
+        <div class="stepper" data-stepper="neighbour-k">
+          <span class="micro">Neighbours</span>
+          <button type="button" data-step="-1" aria-label="Fewer neighbours">–</button>
+          <output id="neighbour-k">5</output>
+          <button type="button" data-step="1" aria-label="More neighbours">+</button>
+        </div>
+        <button class="btn" type="submit"><span>Find</span></button>
+      </div>
+    </form>
+
+    <div id="neighbour-source" class="outlet"></div>
+    <div id="neighbour-out" class="outlet"></div>
+  </section>
 </section>
 
-<!-- 07 · CONDENSE .............................................. -->
+<!-- 06 · CONDENSE ..............................................
+     LIVE extractive summarization.
+     JS: condense  ·  API: POST /api/summarize  ·  Python: app/summarize.py summarize() -->
 <section class="view" data-view="condense" hidden>
   <header class="pagehead" data-reveal>
-    <p class="eyebrow"><span>07</span> Summary</p>
+    <p class="eyebrow"><span>06</span> Summary</p>
     <h2 class="display">Long review in.<br>The gist out.</h2>
     <p class="lede">Extractive summarisation by TextRank: sentences are ranked by how central
       they are to the review's own similarity graph. Nothing is invented — only the load-bearing
       sentences survive.</p>
   </header>
+
+  <details class="explain" data-reveal>
+    <summary class="explain__toggle">
+      <span class="explain__kicker">How this works</span>
+      <span class="explain__technique">Extractive summarization · TextRank (PageRank on sentences)</span>
+    </summary>
+    <div class="explain__body">
+      <ol class="explain__steps">
+        <li><b>Split</b> the review into sentences.</li>
+        <li><b>Tokenize</b> each sentence into words.</li>
+        <li><b>Build a graph.</b> Every sentence is a node. Two sentences are linked more strongly
+          the more words they share.</li>
+        <li><b>PageRank.</b> Score the nodes, repeating until the scores stop changing (damping
+          0.85). A sentence scores high when it is similar to many other high-scoring sentences,
+          i.e. it is central to the review.</li>
+        <li><b>Select.</b> Keep the top <i>N</i> sentences and print them in their original order.</li>
+      </ol>
+      <dl class="explain__facts">
+        <div><dt>Extractive, not abstractive</dt><dd>Sentences are copied, never rewritten, so the
+          summary cannot say anything the reviewer did not.</dd></div>
+        <div><dt>Two versions</dt><dd>The live engine is the <code>sumy</code> library’s TextRank
+          (it keeps stopwords; link = shared words ÷ (log|A| + log|B|)). Without sumy, a built-in
+          TextRank runs instead: it drops stopwords and does 40 fixed rounds. Its maths is written
+          out in <code>app/summarize.py</code>.</dd></div>
+        <div><dt>Reading the output</dt><dd>Compression = share of words removed. Reviews under 25
+          words, or with no more sentences than requested, are returned unchanged.</dd></div>
+        <div><dt>Code</dt><dd><code>POST /api/summarize</code> → <code>app/summarize.py · summarize()</code>
+          (sumy’s TextRank, with a built-in TextRank as fallback)</dd></div>
+      </dl>
+    </div>
+  </details>
 
   <form class="composer" data-reveal id="condense-form">
     <label class="field">
@@ -297,25 +554,15 @@
   <div id="condense-out" class="outlet"></div>
 </section>
 
-<!-- 08 · ATLAS ................................................. -->
-<section class="view" data-view="atlas" hidden>
-  <header class="pagehead" data-reveal>
-    <p class="eyebrow"><span>08</span> Plates</p>
-    <h2 class="display">The corpus,<br>plotted.</h2>
-    <p class="lede">Six analytical plates rendered from the full hundred-thousand-review run.
-      Click any plate to enlarge.</p>
-  </header>
-  <div class="plates" data-reveal id="atlas"></div>
-</section>
-
   <footer class="colophon">
     <span>The Review Room</span>
-    <span>VADER · TextRank · MiniLM embeddings · spaCy</span>
+    <span>VADER · NMF · TextRank · MiniLM embeddings · spaCy</span>
     <span id="colophon-corpus"></span>
   </footer>
 </main>
 
 <!-- ─────────────────────────  LIGHTBOX  ───────────────────────── -->
+<!-- Enlarged view of a chart (Corpus page), opened by clicking a plate. -->
 <dialog class="lightbox" id="lightbox">
   <button class="lightbox__close" type="button" aria-label="Close">✕</button>
   <figure>
@@ -324,6 +571,6 @@
   </figure>
 </dialog>
 
-<script src="/assets/app.js" type="module"></script>
+<script src="/assets/app.js?v=2" type="module"></script>
 </body>
 </html>

@@ -1,6 +1,28 @@
 /* ============================================================
    THE REVIEW ROOM — client
    A hash-routed, dependency-free front end over the NLP API.
+
+   HOW THIS FILE IS ORGANISED
+     1. helpers            small utilities + api(), the one function that
+                           talks to the Python server (fetch -> JSON)
+     2. shared fragments   HTML builders reused by several views
+     3. one controller per view (01 corpus ... 06 condense). Each has an
+        enter(view) method that runs when that page is opened: it wires up
+        the form buttons, calls the API and renders the JSON as HTML.
+     4. router             reads the URL hash (#/topics) and shows the view
+
+   NO NLP HAPPENS IN THE BROWSER. Every analysis runs in Python (app/);
+   this file only sends text to the API and displays what comes back.
+
+   VIEW → ENDPOINT → PYTHON
+     01 corpus     GET  /api/overview    app/server.py      overview()
+                   (charts)              images from app/plates.py
+     02 verdict    POST /api/sentiment   app/sentiment.py   analyze()
+     03 aspects    GET  /api/aspects     app/server.py      aspect_table()
+     04 topics     GET  /api/topics      app/server.py      topic_list()
+     05 retrieval  POST /api/search      app/semantic.py    search()
+                   POST /api/similar     app/semantic.py    neighbours()
+     06 condense   POST /api/summarize   app/summarize.py   summarize()
    ============================================================ */
 
 const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -32,13 +54,31 @@ function truncate(text, limit = 260) {
   return `${cut.slice(0, cut.lastIndexOf(' ')) || cut}…`;
 }
 
+// Shown when no server answers at all (the browser's own message is just
+// "Failed to fetch").
+const SERVER_UNREACHABLE = 'Cannot reach the Python server. Start it with “python run.py” '
+  + 'in the project folder, then reload this page. (Opening index.html directly as a file '
+  + 'does not work: the page needs the server.)';
+
+/**
+ * Call the Python API. A call with `body` is a POST of that body as JSON,
+ * anything else a GET. Resolves to the parsed JSON; on an HTTP error it
+ * throws with the server's `detail` message, which the views display.
+ */
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-    method: options.body ? (options.method ?? 'POST') : (options.method ?? 'GET'),
-  });
+  let response;
+  try {
+    response = await fetch(path, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      method: options.body ? (options.method ?? 'POST') : (options.method ?? 'GET'),
+    });
+  } catch {
+    // fetch() only throws when nothing answered: the server was stopped, or
+    // the page was opened as a file instead of through python run.py.
+    throw new Error(SERVER_UNREACHABLE);
+  }
 
   if (!response.ok) {
     let detail = `Request failed (${response.status})`;
@@ -67,8 +107,12 @@ const failure = (title, body) =>
 
 const TONES = ['positive', 'neutral', 'negative'];
 
-/** The signature instrument: a stacked polarity band with an axis. */
-function ribbon(name, counts, note = '') {
+/**
+ * The signature instrument: a stacked polarity band with an axis.
+ * `counts` is {positive, neutral, negative}; each segment's width is that
+ * label's share of the total, and the raw counts are printed underneath.
+ */
+function polarityRibbon(name, counts, note = '') {
   const total = TONES.reduce((sum, tone) => sum + (counts[tone] ?? 0), 0) || 1;
   const segments = TONES
     .filter((tone) => (counts[tone] ?? 0) > 0)
@@ -95,10 +139,16 @@ function ribbon(name, counts, note = '') {
 }
 
 /**
- * A ranked corpus entry — used by retrieval, neighbours and topic samples.
- * Topic samples carry no score or corpus index, so both are opt-in.
+ * A ranked corpus entry — used by search results, similar reviews and topic
+ * samples. Topic samples carry no score or corpus index, so both can be
+ * switched off (showScore / showIndex: false).
+ * `item.score` is the cosine similarity to the query (0..1 in practice), which
+ * is also drawn as the small meter bar. Entries with a corpus index get a
+ * "Find similar" button (handled by the retrieval view).
  */
-function resultRow(item, { scoreLabel = 'Similarity', showScore = true, showIndex = true } = {}) {
+function resultRow(item, {
+  scoreLabel = 'Similarity', showScore = true, showIndex = true, showSimilar = showIndex,
+} = {}) {
   const body = item.summary?.trim() || item.review?.trim() || '';
   const width = clamp(Number(item.score ?? 0), 0, 1) * 100;
   const meta = [
@@ -107,6 +157,7 @@ function resultRow(item, { scoreLabel = 'Similarity', showScore = true, showInde
     item.sentiment ? `<span class="dot" data-tone="${esc(item.sentiment)}">${esc(item.sentiment)}</span>` : '',
     showIndex ? `<span>Index ${num(item.index)}</span>` : '',
     item.topic != null ? `<span>Topic ${num(item.topic)}</span>` : '',
+    showSimilar ? `<button type="button" class="result__similar" data-similar="${Number(item.index)}">Find similar →</button>` : '',
   ].filter(Boolean).join('');
 
   return `
@@ -122,7 +173,8 @@ function resultRow(item, { scoreLabel = 'Similarity', showScore = true, showInde
 
 /* ---------- reveal choreography ---------------------------- */
 
-function choreograph(view) {
+/** Number each [data-reveal] block so the CSS entrance animation plays them one after another. */
+function staggerReveal(view) {
   $$('[data-reveal]', view).forEach((node, index) => {
     node.style.setProperty('--i', index);
   });
@@ -155,6 +207,42 @@ function countUp(node, target) {
 }
 
 /* ---------- 01 · Corpus ------------------------------------ */
+/* GET /api/overview → app/server.py overview(). Nothing is computed here:
+   it displays totals of what pipeline/06–08 already worked out offline,
+   and the six chart images at the bottom (renderPlates). */
+
+/**
+ * The chart grid ("plates"). `plates` comes from /api/overview; titles and
+ * captions are defined in app/config.py PLATES and the PNGs were drawn ahead
+ * of time by `python -m app.plates`. Clicking a chart opens it in the lightbox.
+ */
+function renderPlates(grid, plates) {
+  if (!plates?.length) {
+    grid.innerHTML = empty('No plates rendered', 'The visuals directory is empty — run “python -m app.plates” to generate them.');
+    return;
+  }
+
+  grid.innerHTML = plates.map((plate, index) => `
+    <button type="button" class="plate" data-src="${esc(plate.src)}" data-title="${esc(plate.title)}"
+            data-caption="${esc(plate.caption)}">
+      <span class="plate__figure"><img src="${esc(plate.src)}" alt="${esc(plate.title)}" loading="lazy"></span>
+      <span class="plate__body">
+        <span class="plate__no">Plate ${String(index + 1).padStart(2, '0')}</span>
+        <span class="plate__title">${esc(plate.title)}</span>
+        <span class="plate__cap">${esc(plate.caption)}</span>
+      </span>
+    </button>`).join('');
+
+  const box = $('#lightbox');
+  $$('.plate', grid).forEach((plate) => {
+    plate.addEventListener('click', () => {
+      $('#lightbox-img').src = plate.dataset.src;
+      $('#lightbox-img').alt = plate.dataset.title;
+      $('#lightbox-cap').textContent = `${plate.dataset.title} — ${plate.dataset.caption}`;
+      box.showModal();
+    });
+  });
+}
 
 const corpus = {
   loaded: false,
@@ -176,8 +264,8 @@ const corpus = {
     const cards = [
       { label: 'Reviews analysed', value: data.total_reviews, note: 'full pipeline run' },
       { label: 'Indexed for retrieval', value: data.indexed_reviews, note: 'MiniLM · 384 dimensions' },
-      { label: 'Aspects extracted', value: data.aspects.length, note: 'product facets' },
-      { label: 'Topics discovered', value: data.topics.length, note: 'latent clusters' },
+      { label: 'Aspects extracted', value: data.aspects.length, note: 'keyword-detected facets' },
+      { label: 'Topics discovered', value: data.topics.length, note: 'NMF topic model' },
     ];
 
     stats.innerHTML = cards.map((card) => `
@@ -196,8 +284,8 @@ const corpus = {
 
     const ribbons = $('#corpus-ribbons', view);
     const bands = [];
-    if (data.labelled) bands.push(ribbon('Human labels', data.labelled, 'as shipped with the dataset'));
-    if (data.predicted) bands.push(ribbon('VADER prediction', data.predicted, 'what the engine returned'));
+    if (data.labelled) bands.push(polarityRibbon('Human labels', data.labelled, 'from star ratings · no neutral class'));
+    if (data.predicted) bands.push(polarityRibbon('VADER prediction', data.predicted, 'pipeline stage 06 · compound score ±0.05'));
     ribbons.innerHTML = bands.length
       ? bands.join('')
       : empty('No polarity columns', 'The sentiment table did not contain a label column.');
@@ -225,7 +313,7 @@ const corpus = {
     $('#corpus-topics', view).innerHTML = data.topics.map((topic) => `
       <li>
         <div class="bars__top">
-          <span class="bars__name">Topic ${topic.topic}</span>
+          <span class="bars__name">Topic ${topic.topic}${topic.label ? ` · ${esc(topic.label)}` : ''}</span>
           <span class="bars__count">${num(topic.count)} reviews</span>
         </div>
         <span class="track">
@@ -233,15 +321,25 @@ const corpus = {
         </span>
       </li>`).join('');
 
+    renderPlates($('#corpus-plates', view), data.plates);
+
     $('#colophon-corpus').textContent = `${num(data.total_reviews)} reviews · ${num(data.indexed_reviews)} indexed`;
     animateIn(view);
   },
 };
 
 /* ---------- 02 · Verdict ----------------------------------- */
+/* POST /api/sentiment → app/sentiment.py analyze(). The response carries the
+   label, the scores, `evidence` (every lexicon match with its character
+   positions) and `reasoning` (the calculation, step by step). */
 
-/** Merge overlapping evidence spans, longest and strongest first. */
-function markupSpans(evidence) {
+/**
+ * Choose which evidence spans to highlight. Phrases come before single
+ * keywords and longer spans before shorter ones; any span that overlaps one
+ * already chosen is dropped. So "not good" is marked as one negative phrase,
+ * not as the positive keyword "good" inside it.
+ */
+function pickHighlightSpans(evidence) {
   const collected = [];
   const push = (items, kind, weak) => items.forEach(({ term, spans }) => {
     spans.forEach(([start, end]) => collected.push({ start, end, kind, weak, term }));
@@ -262,8 +360,9 @@ function markupSpans(evidence) {
   return kept.sort((a, b) => a.start - b.start);
 }
 
-function manuscript(text, evidence) {
-  const spans = markupSpans(evidence);
+/** The review text as HTML, with each evidence span wrapped in <mark>. */
+function highlightEvidence(text, evidence) {
+  const spans = pickHighlightSpans(evidence);
   let cursor = 0;
   let html = '';
 
@@ -318,7 +417,7 @@ function renderVerdict(result) {
       <div class="verdict__body">
         <div>
           <p class="micro" style="margin-bottom:.55rem">The review, marked up</p>
-          <div class="manuscript">${manuscript(result.text, result.evidence)}</div>
+          <div class="manuscript">${highlightEvidence(result.text, result.evidence)}</div>
           <div class="legend" style="margin-top:.75rem">
             <span><i style="background:var(--neg)"></i> negative language</span>
             <span><i style="background:var(--pos)"></i> positive language</span>
@@ -326,18 +425,29 @@ function renderVerdict(result) {
           </div>
         </div>
 
-        <dl class="readout">
-          <div><dt>Positive</dt><dd>${fixed(result.positive)}</dd></div>
-          <div><dt>Negative</dt><dd>${fixed(result.negative)}</dd></div>
-          <div><dt>Neutral</dt><dd>${fixed(result.neutral)}</dd></div>
-          <div><dt>Compound</dt><dd>${fixed(result.compound)}</dd></div>
-          <div><dt>Rule score</dt><dd>${fixed(result.rule_score)}</dd></div>
-        </dl>
+        <div>
+          <dl class="readout">
+            <div><dt>Positive</dt><dd>${fixed(result.positive)}</dd></div>
+            <div><dt>Negative</dt><dd>${fixed(result.negative)}</dd></div>
+            <div><dt>Neutral</dt><dd>${fixed(result.neutral)}</dd></div>
+            <div><dt>Compound</dt><dd>${fixed(result.compound)}</dd></div>
+            <div><dt>Rule score</dt><dd>${fixed(result.rule_score)}</dd></div>
+          </dl>
+          <p class="readout__note"><b>Positive / Negative / Neutral</b>: VADER’s estimate of how much
+            of the text carries each polarity (they add up to 1). <b>Compound</b>: VADER’s overall
+            score, −1 to +1. <b>Rule score</b>: the product-review lexicon’s score.
+            <b>Final score</b>: the two combined, as the steps below show.</p>
+        </div>
 
         <div>
           <p class="micro" style="margin-bottom:.7rem">Evidence · decided by ${esc(result.basis)}</p>
           ${evidenceRows(result.evidence)}
         </div>
+
+        ${result.reasoning?.length ? `<div>
+          <p class="micro" style="margin-bottom:.7rem">How the verdict was reached</p>
+          <ol class="reasoning">${result.reasoning.map((step) => `<li>${esc(step)}</li>`).join('')}</ol>
+        </div>` : ''}
 
         ${result.engine === 'rules-only' ? `<p class="notice">Running on the rule lexicon only.
           Install <b>vaderSentiment</b> to restore full hybrid scoring.</p>` : ''}
@@ -384,6 +494,10 @@ const verdict = {
 };
 
 /* ---------- 03 · Aspects ----------------------------------- */
+/* GET /api/aspects → app/server.py aspect_table(): the 28 aspects from
+   pipeline/07 with their polarity shares. Clicking one calls
+   GET /api/aspects/{aspect}/reviews for sample excerpts.
+   net = (positive − negative) ÷ total, so +60% means strongly liked. */
 
 const aspects = {
   rows: null,
@@ -473,7 +587,7 @@ const aspects = {
         <h3 class="dossier__name">${esc(titleCase(row.aspect))}</h3>
       </div>
       <div class="dossier__body">
-        ${ribbon(`${num(row.total)} mentions`, row, `net ${row.net >= 0 ? '+' : ''}${pct(row.net, 1)}`)}
+        ${polarityRibbon(`${num(row.total)} mentions`, row, `net ${row.net >= 0 ? '+' : ''}${pct(row.net, 1)}`)}
         <div>
           <p class="micro" style="margin-bottom:.7rem">In their own words</p>
           <div class="dossier__quotes">${skeleton(3)}</div>
@@ -498,6 +612,10 @@ const aspects = {
 };
 
 /* ---------- 04 · Topics ------------------------------------ */
+/* GET /api/topics → app/server.py topic_list(): the 10 NMF topics from
+   pipeline/08, each with its size, keywords, hand-written label and
+   polarity mix. Selecting one calls GET /api/topics/{n}/reviews for a fixed
+   sample (from the first 500) of reviews whose strongest topic is n. */
 
 const topics = {
   list: null,
@@ -518,6 +636,7 @@ const topics = {
     chips.innerHTML = this.list.map((topic) => `
       <button type="button" class="chip" data-topic="${topic.topic}">
         <span class="chip__name">Topic ${topic.topic}</span>
+        ${topic.label ? `<span class="chip__label">${esc(topic.label)}</span>` : ''}
         <span class="chip__count">${num(topic.count)} reviews</span>
       </button>`).join('');
 
@@ -540,16 +659,25 @@ const topics = {
     try {
       const data = await api(`/api/topics/${topic}/reviews?limit=8`);
       const meta = this.list.find((item) => item.topic === topic);
+      // The keywords are the topic's 10 highest-weighted terms in the NMF model
+      // (strongest first); they are what defines the topic.
+      const keywords = meta?.keywords?.length ? `
+          <div class="evidence__row" style="margin-bottom:1.6rem">
+            <span class="evidence__key">Top NMF keywords</span>
+            <span class="evidence__list">${meta.keywords.map((word) =>
+              `<span class="evidence__item">${esc(word)}</span>`).join('')}</span>
+          </div>` : '';
       out.innerHTML = `
         <section class="block">
           <div class="block__head">
-            <h3 class="block__title">Topic ${topic}</h3>
+            <h3 class="block__title">Topic ${topic}${meta?.label ? ` · ${esc(meta.label)}` : ''}</h3>
             <p class="block__meta">${num(data.count)} reviews · ${pct(data.count / (this.total() || 1), 1)} of corpus</p>
           </div>
-          ${meta?.sentiment ? ribbon('Polarity within this topic', meta.sentiment) : ''}
+          ${keywords}
+          ${meta?.sentiment ? polarityRibbon('Polarity within this topic', meta.sentiment, 'VADER labels') : ''}
         </section>
         <section class="block">
-          <div class="block__head"><h3 class="block__title">Representative reviews</h3></div>
+          <div class="block__head"><h3 class="block__title">Sample reviews from this topic</h3></div>
           <div class="results">${data.reviews.map((review, index) => resultRow({
             rank: index + 1,
             title: review.title,
@@ -569,6 +697,11 @@ const topics = {
 };
 
 /* ---------- 05 · Retrieval --------------------------------- */
+/* POST /api/search → app/semantic.py search(). `mode` in the response says
+   whether the ranking was semantic (MiniLM embeddings) or the lexical
+   fallback. Each result card shows the review's stored TextRank summary
+   (pipeline/09) when it has one, and a "Find similar →" button that runs the
+   "Find similar reviews" section below (similarReviews). */
 
 const retrieval = {
   enter(view) {
@@ -578,6 +711,15 @@ const retrieval = {
 
     const input = $('#search-query', view);
     const out = $('#search-out', view);
+
+    similarReviews.wire(view);
+
+    // "Find similar →" on any result card (search results or similar reviews)
+    // hands that review's index to the "Find similar reviews" section.
+    view.addEventListener('click', (event) => {
+      const trigger = event.target.closest('[data-similar]');
+      if (trigger) similarReviews.lookup(view, Number(trigger.dataset.similar));
+    });
 
     $$('[data-query]', view).forEach((button) => {
       button.addEventListener('click', () => {
@@ -606,7 +748,8 @@ const retrieval = {
           <section class="block">
             <div class="block__head">
               <h3 class="block__title">${data.results.length} matches for “${esc(query)}”</h3>
-              <p class="block__meta">${data.mode} ranking</p>
+              <p class="block__meta">${data.mode} ranking · score = cosine similarity${data.mode === 'semantic'
+                ? ' of MiniLM embeddings' : ' of IDF-weighted word counts'}</p>
             </div>
             <div class="results">${data.results.map((item) => resultRow(item)).join('')}</div>
             ${data.mode === 'lexical' ? `<p class="notice">Ranked lexically by weighted term overlap.
@@ -624,10 +767,22 @@ const retrieval = {
   },
 };
 
-/* ---------- 06 · Neighbours -------------------------------- */
+/* ---------- 05 · Retrieval: find similar reviews ------------ */
+/* The "Find similar reviews" section of the Retrieval page.
+   POST /api/similar → app/semantic.py neighbours(). Uses the review's stored
+   embedding as the query, so no model runs. GET /api/reviews/{index} and
+   /api/reviews/random/pick fetch the source review shown on top. */
 
-const neighbours = {
-  enter(view) {
+const similarReviews = {
+  /** Called by the "Find similar →" buttons: fill in the index and run the lookup. */
+  lookup(view, index) {
+    $('#neighbour-index', view).value = index;
+    $('#neighbour-form', view).requestSubmit();
+    $('#similar', view).scrollIntoView({ block: 'start', behavior: REDUCED ? 'auto' : 'smooth' });
+  },
+
+  /** Hook up the form, the Random button and the first review (runs once). */
+  wire(view) {
     const form = $('#neighbour-form', view);
     if (form.dataset.bound) return;
     form.dataset.bound = '1';
@@ -682,8 +837,8 @@ const neighbours = {
         out.innerHTML = `
           <section class="block">
             <div class="block__head">
-              <h3 class="block__title">Nearest neighbours</h3>
-              <p class="block__meta">cosine distance in embedding space</p>
+              <h3 class="block__title">Most similar reviews</h3>
+              <p class="block__meta">cosine similarity in embedding space · 1.0 = same meaning</p>
             </div>
             <div class="results">${data.results.map((item) => resultRow(item)).join('')}</div>
           </section>`;
@@ -702,7 +857,10 @@ const neighbours = {
   },
 };
 
-/* ---------- 07 · Condense ---------------------------------- */
+/* ---------- 06 · Condense ---------------------------------- */
+/* POST /api/summarize → app/summarize.py summarize(). Returns the extractive
+   TextRank summary plus word / sentence counts and the compression ratio
+   (share of words removed). */
 
 const condense = {
   enter(view) {
@@ -751,7 +909,7 @@ const condense = {
               <span class="stat__note">words · ${num(data.summary_sentences)} sentences</span></div>
             <div class="stat stat--signal"><span class="stat__label">Compression</span>
               <span class="stat__value">${pct(data.compression, 0)}</span>
-              <span class="stat__note">${esc(data.engine)}</span></div>
+              <span class="stat__note">of words removed · ${esc(data.engine)}</span></div>
           </div>
           <div class="compare">
             <div class="compare__pane">
@@ -769,52 +927,6 @@ const condense = {
       } finally {
         button.disabled = false;
       }
-    });
-  },
-};
-
-/* ---------- 08 · Atlas ------------------------------------- */
-
-const atlas = {
-  loaded: false,
-  async enter(view) {
-    if (this.loaded) return;
-    this.loaded = true;
-
-    const grid = $('#atlas', view);
-    grid.innerHTML = skeleton(3);
-
-    let plates;
-    try {
-      plates = (await api('/api/overview')).plates;
-    } catch (error) {
-      grid.innerHTML = failure('Plates unavailable', error.message);
-      return;
-    }
-
-    if (!plates.length) {
-      grid.innerHTML = empty('No plates rendered', 'The visuals directory is empty — run the analytics notebook to generate them.');
-      return;
-    }
-
-    grid.innerHTML = plates.map((plate, index) => `
-      <button type="button" class="plate" data-src="${esc(plate.src)}" data-title="${esc(plate.title)}">
-        <span class="plate__figure"><img src="${esc(plate.src)}" alt="${esc(plate.title)}" loading="lazy"></span>
-        <span class="plate__body">
-          <span class="plate__no">Plate ${String(index + 1).padStart(2, '0')}</span>
-          <span class="plate__title">${esc(plate.title)}</span>
-          <span class="plate__cap">${esc(plate.caption)}</span>
-        </span>
-      </button>`).join('');
-
-    const box = $('#lightbox');
-    $$('.plate', grid).forEach((plate) => {
-      plate.addEventListener('click', () => {
-        $('#lightbox-img').src = plate.dataset.src;
-        $('#lightbox-img').alt = plate.dataset.title;
-        $('#lightbox-cap').textContent = plate.dataset.title;
-        box.showModal();
-      });
     });
   },
 };
@@ -859,6 +971,11 @@ function wireChrome() {
   });
 }
 
+/**
+ * Rail footer: which engine answers each feature (GET /api/status).
+ *   live (green)    the full engine is installed (VADER, MiniLM, sumy)
+ *   fallback (amber) a simpler built-in stand-in is answering instead
+ */
 async function wireStatus() {
   const list = $('#engines');
   try {
@@ -879,20 +996,26 @@ async function wireStatus() {
 }
 
 /* ---------- router ----------------------------------------- */
+/* The URL hash picks the view: #/topics shows <section data-view="topics">
+   and runs topics.enter(). Views load their data on first visit only. */
 
 const VIEWS = {
-  corpus, verdict, aspects, topics, retrieval, neighbours, condense, atlas,
+  corpus, verdict, aspects, topics, retrieval, condense,
 };
 
+// Pages that were merged into others: old links still land in the right place.
+const MERGED = { neighbours: 'retrieval', atlas: 'corpus' };
+
 function route() {
-  const name = (location.hash.replace('#/', '') || 'corpus');
+  const requested = location.hash.replace('#/', '') || 'corpus';
+  const name = MERGED[requested] ?? requested;
   const target = VIEWS[name] ? name : 'corpus';
 
   $$('.view').forEach((view) => {
     const active = view.dataset.view === target;
     view.hidden = !active;
     view.toggleAttribute('data-active', active);
-    if (active) choreograph(view);
+    if (active) staggerReveal(view);
   });
 
   $$('.nav__item').forEach((link) => {
@@ -907,6 +1030,10 @@ function route() {
 }
 
 window.addEventListener('hashchange', route);
+
+// The "not running" notice in index.html is for when this script cannot load
+// at all; now that it has, remove it (the stylesheet also hides it).
+document.querySelector('.boot-notice')?.remove();
 
 wireChrome();
 wireStatus();

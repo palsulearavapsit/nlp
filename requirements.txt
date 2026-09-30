@@ -1,12 +1,15 @@
+# Libraries for the WEB APP (python run.py).
+# The offline pipeline needs a few more: see pipeline/requirements.txt.
+
 # Core service — required
-fastapi>=0.110
-uvicorn>=0.27
-pandas>=2.0
-numpy>=1.24
+fastapi>=0.110          # the HTTP API in app/server.py (routes, request validation, /docs)
+uvicorn>=0.27           # the web server that runs the FastAPI app (started by run.py)
+pandas>=2.0             # reading the pipeline's CSV files (app/data.py)
+numpy>=1.24             # the 5,000 x 384 embedding matrix and cosine similarity (app/semantic.py)
 
 # Full-fidelity NLP engines — optional.
 # Without these the app still runs: sentiment falls back to the rule lexicon,
 # summarisation to a built-in TextRank, and search to lexical ranking.
-vaderSentiment>=3.3.2
-sumy>=0.11
-sentence-transformers>=2.2
+vaderSentiment>=3.3.2       # VADER sentiment scores (app/sentiment.py)
+sumy>=0.11                  # TextRank summarizer (app/summarize.py)
+sentence-transformers>=2.2  # MiniLM encoder for semantic search queries (app/semantic.py)
